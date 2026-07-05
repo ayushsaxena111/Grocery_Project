@@ -1,11 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PackageIcon, NavigationIcon } from "lucide-react";
 import OtpModal from "../../components/Delivery/OtpModal";
 import CancelModal from "../../components/Delivery/CancelModal";
 import DeliveryOrderCard from "../../components/Delivery/DeliveryOrderCard";
 import Loading from "../../components/Loading";
 import type { Order } from "../../types";
-import { dummyDashboardOrdersData } from "../../assets/assets";
+import axios from "axios";
+import toast from "react-hot-toast";
+
+const API_URL = import.meta.env.VITE_BASE_URL || "https://localhost:5000/api";
+
+const getAuthHeadres = () => ({
+    headers: { Authorization: `Bearer ${localStorage.getItem("delivery_token")}` }
+});
 
 export default function DeliveryDashboard() {
 
@@ -23,52 +30,176 @@ export default function DeliveryDashboard() {
     const [cancelModal, setCancelModal] = useState<string | null>(null);
     const [cancelReason, setCancelReason] = useState("");
 
+    const watchIdRef = useRef<number | null>(null);
+
     const fetchOrders = async () => {
         setLoading(true);
-        setOrders(dummyDashboardOrdersData as any);
-        setLoading(false);
+        try {
+            const { data } = await axios.get(
+                `${API_URL}/delivery/my-deliveries?status=${tab}`,
+                getAuthHeadres()
+            );
+            setOrders(data.orders);
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message || "Failed");
+        } finally {
+            setLoading(false);
+        }
     };
 
     useEffect(() => {
         fetchOrders();
     }, [tab]);
 
+    useEffect(() => {
+        const activeOrders = orders.filter((o) =>
+            ["Assigned", "Packed", "Out for delivery"].includes(o.status)
+        );
+
+        if (activeOrders.length === 0 || !tracking) {
+            if (watchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(watchIdRef.current);
+                watchIdRef.current = null;
+            }
+            return;
+        }
+
+        const sendLocation = (pos: GeolocationPosition) => {
+            const { latitude: lat, longitude: lng } = pos.coords;
+
+            activeOrders.forEach((order) => {
+                axios
+                    .put(
+                        `${API_URL}/delivery/my-deliveries/${order.id}/location`,
+                        { lat, lng },
+                        getAuthHeadres()
+                    )
+                    .catch(() => { });
+            });
+        };
+
+        watchIdRef.current = navigator.geolocation.watchPosition(
+            sendLocation,
+            () => { },
+            {
+                enableHighAccuracy: true,
+                maximumAge: 10000,
+            }
+        );
+
+        const interval = setInterval(() => {
+            navigator.geolocation.getCurrentPosition(
+                sendLocation,
+                () => { },
+                { enableHighAccuracy: true }
+            );
+        }, 10000);
+
+        return () => {
+            if (watchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(watchIdRef.current);
+                watchIdRef.current = null;
+            }
+            clearInterval(interval);
+        };
+
+    }, [orders, tracking]);
+
     const handleUpdateStatus = async (orderId: string, status: string) => {
-        console.log(orderId, status);
+        try {
+            await axios.put(
+                `${API_URL}/delivery/my-deliveries/${orderId}/status`,
+                { status },
+                getAuthHeadres()
+            );
+
+            toast.success(`Status updated to ${status}`);
+            fetchOrders();
+
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message || "Failed");
+        }
     };
 
     const handleComplete = async () => {
         if (!otpModal || !otp) return;
+
         setSubmitting(true);
-        setTimeout(() => {
-            setSubmitting(false);
+
+        try {
+            await axios.put(
+                `${API_URL}/delivery/my-deliveries/${otpModal}/complete`,
+                { otp },
+                getAuthHeadres()
+            );
+
+            toast.success("Delivery Completed");
+
             setOtpModal(null);
             setOtp("");
-        }, 1000);
+            fetchOrders();
+
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message || "Failed");
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     const handleCancel = async () => {
         if (!cancelModal) return;
+
         setSubmitting(true);
-        setTimeout(() => {
-            setSubmitting(false);
+
+        try {
+            await axios.put(
+                `${API_URL}/delivery/my-deliveries/${cancelModal}/cancel`,
+                { reason: cancelReason },
+                getAuthHeadres()
+            );
+
+            toast.success("Delivery Cancelled");
+
             setCancelModal(null);
             setCancelReason("");
-        }, 1000);
-    }
+            fetchOrders();
+
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message || "Failed");
+        } finally {
+            setSubmitting(false);
+        }
+    };
 
     return (
         <div className="space-y-6">
             {/* Tabs + Tracking toggle */}
             <div className="flex items-center gap-2 flex-wrap">
                 {(["active", "completed"] as const).map((t) => (
-                    <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 text-sm font-medium rounded-xl transition-colors ${tab === t ? "bg-app-green text-white" : "bg-white text-zinc-600 hover:bg-app-cream border border-app-border"}`}>
+                    <button
+                        key={t}
+                        onClick={() => setTab(t)}
+                        className={`px-4 py-2 text-sm font-medium rounded-xl transition-colors ${tab === t
+                                ? "bg-app-green text-white"
+                                : "bg-white text-zinc-600 hover:bg-app-cream border border-app-border"
+                            }`}
+                    >
                         {t === "active" ? "Active" : "Completed"}
                     </button>
                 ))}
+
                 <div className="ml-auto">
-                    <button onClick={() => setTracking((prev) => !prev)} className={`px-4 py-2 text-sm font-medium rounded-xl transition-colors flex items-center gap-1.5 ${tracking ? "bg-green-600 text-white" : "bg-white text-zinc-600 border border-app-border hover:bg-app-cream"}`}>
-                        <NavigationIcon className={`w-3.5 h-3.5 ${tracking ? "animate-pulse" : ""}`} />
+                    <button
+                        onClick={() => setTracking((prev) => !prev)}
+                        className={`px-4 py-2 text-sm font-medium rounded-xl transition-colors flex items-center gap-1.5 ${tracking
+                                ? "bg-green-600 text-white"
+                                : "bg-white text-zinc-600 border border-app-border hover:bg-app-cream"
+                            }`}
+                    >
+                        <NavigationIcon
+                            className={`w-3.5 h-3.5 ${tracking ? "animate-pulse" : ""}`}
+                        />
+
                         {tracking ? "Sharing Location" : "Share Location"}
                     </button>
                 </div>
@@ -80,19 +211,53 @@ export default function DeliveryDashboard() {
             ) : orders.length === 0 ? (
                 <div className="text-center py-16 bg-white rounded-2xl border border-app-border">
                     <PackageIcon className="size-12 text-app-border mx-auto mb-3" />
-                    <p className="text-lg font-semibold text-zinc-900 mb-1">No {tab} deliveries</p>
-                    <p className="text-sm text-zinc-500">{tab === "active" ? "You'll see new assignments here" : "Completed deliveries will appear here"}</p>
+
+                    <p className="text-lg font-semibold text-zinc-900 mb-1">
+                        No {tab} deliveries
+                    </p>
+
+                    <p className="text-sm text-zinc-500">
+                        {tab === "active"
+                            ? "You'll see new assignments here"
+                            : "Completed deliveries will appear here"}
+                    </p>
                 </div>
             ) : (
                 <div className="space-y-4">
-                    {orders.map((order) => <DeliveryOrderCard key={order._id} order={order} tab={tab} handleUpdateStatus={handleUpdateStatus} setOtpModal={setOtpModal} setCancelModal={setCancelModal} />)}
+                    {orders.map((order) => (
+                        <DeliveryOrderCard
+                            key={order.id}
+                            order={order}
+                            tab={tab}
+                            handleUpdateStatus={handleUpdateStatus}
+                            setOtpModal={setOtpModal}
+                            setCancelModal={setCancelModal}
+                        />
+                    ))}
                 </div>
             )}
 
             {/* OTP Modal */}
-            {otpModal && <OtpModal setOtpModal={setOtpModal} otp={otp} setOtp={setOtp} handleComplete={handleComplete} submitting={submitting} />}
+            {otpModal && (
+                <OtpModal
+                    setOtpModal={setOtpModal}
+                    otp={otp}
+                    setOtp={setOtp}
+                    handleComplete={handleComplete}
+                    submitting={submitting}
+                />
+            )}
+
             {/* Cancel Modal */}
-            {cancelModal && <CancelModal setCancelModal={setCancelModal} cancelReason={cancelReason} setCancelReason={setCancelReason} handleCancel={handleCancel} submitting={submitting} />}
+            {cancelModal && (
+                <CancelModal
+                    setCancelModal={setCancelModal}
+                    cancelReason={cancelReason}
+                    setCancelReason={setCancelReason}
+                    handleCancel={handleCancel}
+                    submitting={submitting}
+                />
+            )}
         </div>
     );
 }

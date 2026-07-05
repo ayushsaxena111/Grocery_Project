@@ -30,9 +30,9 @@
 
 //     const addToCart = (product: Product,quantity = 1) => {
 //         setItems((prev)=>{
-//             const existing = prev.find((item)=>item.product._id === product._id)
+//             const existing = prev.find((item)=>item.product.id === product.id)
 //             if(existing){
-//                 return prev.map((item)=>(items.product._id === product._id ? {... item, quantity: item.quantity + quantity} : item))
+//                 return prev.map((item)=>(items.product.id === product.id ? {... item, quantity: item.quantity + quantity} : item))
 //             }
 //             return {...prev,{product,quantity}}
 //         })
@@ -40,7 +40,7 @@
 //     }
 
 //     const removeFromCart = (productId: string) => {
-//         setItems((prev)=>prev.filter((item)=>item.product._id !== productId));
+//         setItems((prev)=>prev.filter((item)=>item.product.id !== productId));
 //     }
 
 //     return <CartContext.Provider value={{}}>
@@ -107,12 +107,12 @@ export function CartProvider({
   const addToCart = (product: Product, quantity = 1) => {
     setItems((prev) => {
       const existing = prev.find(
-        (item) => item.product._id === product._id
+        (item) => item.product.id === product.id
       );
 
       if (existing) {
         return prev.map((item) =>
-          item.product._id === product._id
+          item.product.id === product.id
             ? {
                 ...item,
                 quantity: item.quantity + quantity,
@@ -129,7 +129,7 @@ export function CartProvider({
 
   const removeFromCart = (productId: string) => {
     setItems((prev) =>
-      prev.filter((item) => item.product._id !== productId)
+      prev.filter((item) => item.product.id !== productId)
     );
   };
 
@@ -144,7 +144,7 @@ export function CartProvider({
 
     setItems((prev) =>
       prev.map((item) =>
-        item.product._id === productId
+        item.product.id === productId
           ? { ...item, quantity }
           : item
       )

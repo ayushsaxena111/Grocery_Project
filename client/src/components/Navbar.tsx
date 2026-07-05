@@ -2,14 +2,11 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { BikeIcon, SearchIcon, ShoppingCartIcon , ChevronDownIcon , UserIcon, XIcon, MenuIcon, PackageIcon, MapPinIcon, ArrowUpRightIcon, ShieldIcon, LogOutIcon } from "lucide-react";
 import { useCart } from "../context/CartContext";
+import { useAuth } from "../context/AuthContext";
 
 const Navbar = () => {
 
-    const user: any = {
-        name: "John Doe",
-        email: "johndoe@example.com",
-        isAdmin: true
-    };
+    const { user , logout} = useAuth()
 
     const { cartCount, setIsCartOpen } = useCart()
 
@@ -27,6 +24,7 @@ const Navbar = () => {
     }
 
     const handleLogout = () => {
+        logout();
         setUserMenuOpen(false);
         navigate("/");
     }
